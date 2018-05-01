@@ -67,11 +67,6 @@ def parse_args():
                         default=DEFAULT_OVERLAP,
                         type=float,
                         help='proportion overlap for CNV equality (default {})'.format(DEFAULT_OVERLAP))
-    parser.add_argument('--samples',
-                        metavar='SAMPLES',
-                        required=True,
-                        type=str,
-                        help='Name of output samples file')
     parser.add_argument('csv_file',
                         metavar='CSV_FILE',
                         type=str,
@@ -109,13 +104,15 @@ class Variants(object):
 
 def read_csv_file(options):
     variants = Variants()
+    sample_ids = set()
     with open(options.csv_file) as file:
         logging.info("Processing TSV file from %s...", options.csv_file)
         reader = csv.DictReader(file)
         for row in reader:
             variants.add(row)
+            sample_ids.add(row['sampleID'])
         logging.info("Processing TSV file from %s: done", options.csv_file)
-    return variants
+    return sample_ids, variants
 
 
 def cnv_intervals(variants):
@@ -174,25 +171,11 @@ def average(items):
     return (sum(items) / len(items))
 
 
-def samples_to_cnvs(variant_ids, samples_file, samples_cnvs):
-    with open(samples_file, "w") as file:
-        all_sample_ids = sorted(samples_cnvs.keys())
-        header = ["variant"] + all_sample_ids
-        file.write(",".join(header) + "\n")
-        for variant in sorted(variant_ids):
-            variant_row = [str(variant)]
-            for sample in all_sample_ids: 
-                if variant in samples_cnvs[sample]:
-                    variant_row.append(samples_cnvs[sample][variant])
-                else:
-                    variant_row.append('')
-            file.write(",".join(variant_row) + "\n")
-
-
-def merge_overlaps(samples_file, variants, overlaps):
+def merge_overlaps(sample_ids, variants, overlaps):
     logging.info("Merging overlapping variants...")
+    sorted_sample_ids = sorted(sample_ids)
     writer = csv.writer(sys.stdout, delimiter="\t")
-    header = ["id", "chr", "start", "end", "cn", "state", "num_samples"]
+    header = ["chr", "start", "end", "cn", "state", "num_samples"] + sorted_sample_ids
     writer.writerow(header)
     results = []
     samples_cnvs = {}
@@ -200,25 +183,22 @@ def merge_overlaps(samples_file, variants, overlaps):
     for component in nx.connected_components(overlaps):
         if len(component) > 0:
             variant_infos = [variants[id] for id in component]
-            samples_confs = [(var['sampleID'], var['conf']) for var in variant_infos]
+            samples_confs = {var['sampleID']: var['conf'] for var in variant_infos}
             first_info = variant_infos[0]
             chrom  = first_info['chr']
             cn = first_info['cn']
             state = first_info['state']
             start = min([int(info['start']) for info in variant_infos])
             end = max([int(info['end']) for info in variant_infos])
-            results.append([chrom, start, end, cn, state, len(component)] + samples_confs)
+            results.append([chrom, start, end, cn, state, len(component)] + [samples_confs])
     results.sort(key = lambda x: (int(x[0][3:]), int(x[1]), int(x[2]), int(x[3])))
-    for count, row in enumerate(results):
-        variant_ids.add(count)
+    for row in results:
         cnv_info = row[:6]
-        samples_info = row[6:]
-        writer.writerow([count] + cnv_info)
-        for (sample, conf) in samples_info:
-            if sample not in samples_cnvs:
-                samples_cnvs[sample] = {} 
-            samples_cnvs[sample][count] = conf
-    samples_to_cnvs(variant_ids, samples_file, samples_cnvs)
+        samples_info = row[6]
+        sample_output = [] 
+        for sample_id in sorted_sample_ids: 
+            sample_output.append(samples_info.get(sample_id, ''))
+        writer.writerow(cnv_info + sample_output)
     logging.info("Merging overlapping variants: done")
 
 
@@ -252,10 +232,10 @@ def main():
     "Orchestrate the execution of the program"
     options = parse_args()
     init_logging(options.log)
-    variants = read_csv_file(options)
+    sample_ids, variants = read_csv_file(options)
     intervals = cnv_intervals(variants.variants)
     overlaps = get_intersections(options.overlap, variants.variants, intervals)
-    merge_overlaps(options.samples, variants.variants, overlaps)
+    merge_overlaps(sample_ids, variants.variants, overlaps)
     logging.info("computation ended")
 
 
