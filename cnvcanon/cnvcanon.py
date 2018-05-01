@@ -63,10 +63,10 @@ def parse_args():
                         type=str,
                         help='record program progress in LOG_FILE')
     parser.add_argument('--overlap',
-                        metavar='PERCENTAGE',
+                        metavar='PROPORTION',
                         default=DEFAULT_OVERLAP,
                         type=float,
-                        help='percentage overlap for CNV equality (default {})'.format(DEFAULT_OVERLAP))
+                        help='proportion overlap for CNV equality (default {})'.format(DEFAULT_OVERLAP))
     parser.add_argument('--samples',
                         metavar='SAMPLES',
                         required=True,
