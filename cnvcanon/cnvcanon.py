@@ -18,6 +18,9 @@ import networkx as nx
 from pathlib import Path
 from copy import copy
 import re
+import plotly as py
+import plotly.graph_objs as go
+from plotly.graph_objs import Scatter, Layout
 
 
 EXIT_FILE_IO_ERROR = 1
@@ -67,6 +70,14 @@ def parse_args():
                         default=DEFAULT_OVERLAP,
                         type=float,
                         help='proportion overlap for CNV equality (default {})'.format(DEFAULT_OVERLAP))
+    parser.add_argument('--heatmap',
+                        metavar='HTML_FILE',
+                        type=str,
+                        help='Output a heatmap file with this name')
+    parser.add_argument('--histogram',
+                        metavar='HTML_FILE',
+                        type=str,
+                        help='Output a histogram of confidence scores with this name')
     parser.add_argument('csv_file',
                         metavar='CSV_FILE',
                         type=str,
@@ -192,14 +203,41 @@ def merge_overlaps(sample_ids, variants, overlaps):
             end = max([int(info['end']) for info in variant_infos])
             results.append([chrom, start, end, cn, state, len(component)] + [samples_confs])
     results.sort(key = lambda x: (int(x[0][3:]), int(x[1]), int(x[2]), int(x[3])))
+    samples_confs = [] 
     for row in results:
         cnv_info = row[:6]
         samples_info = row[6]
         sample_output = [] 
         for sample_id in sorted_sample_ids: 
             sample_output.append(samples_info.get(sample_id, ''))
-        writer.writerow(cnv_info + sample_output)
+        #writer.writerow(cnv_info + sample_output)
+        samples_confs.append(sample_output)
     logging.info("Merging overlapping variants: done")
+    return samples_confs
+
+def plot_results(heatmap, histogram, sample_ids, samples_confs):
+    sorted_sample_ids = sorted(sample_ids)
+    heatmap_rows = []
+    non_zeros = []
+    for row in samples_confs:
+        this_row = [float(conf) if conf else 0 for conf in row]
+        heatmap_rows.append(this_row)
+        for val in this_row:
+            if val > 0:
+                non_zeros.append(val)
+
+    variant_nums = [count for count,_ in enumerate(heatmap_rows[0])]
+    
+    if heatmap:
+        trace = go.Heatmap(z=heatmap_rows,
+                           x=sorted_sample_ids,
+                           y=variant_nums, colorscale='Greys')
+        data=[trace]
+        py.offline.plot(data, filename=heatmap)
+
+    if histogram:
+        data = [go.Histogram(x=non_zeros)]
+        py.offline.plot(data, filename=histogram)
 
 
 def init_logging(log_filename):
@@ -235,7 +273,8 @@ def main():
     sample_ids, variants = read_csv_file(options)
     intervals = cnv_intervals(variants.variants)
     overlaps = get_intersections(options.overlap, variants.variants, intervals)
-    merge_overlaps(sample_ids, variants.variants, overlaps)
+    samples_confs = merge_overlaps(sample_ids, variants.variants, overlaps)
+    plot_results(options.heatmap, options.histogram, sample_ids, samples_confs)
     logging.info("computation ended")
 
 

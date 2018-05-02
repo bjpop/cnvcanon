@@ -21,5 +21,5 @@ setup(
     license='LICENSE',
     description=('XXX fixme'),
     long_description=(LONG_DESCRIPTION),
-    install_requires=["networkx", "quicksect"],
+    install_requires=["networkx", "quicksect", "plotly"],
 )
