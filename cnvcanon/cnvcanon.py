@@ -210,7 +210,7 @@ def merge_overlaps(sample_ids, variants, overlaps):
         sample_output = [] 
         for sample_id in sorted_sample_ids: 
             sample_output.append(samples_info.get(sample_id, ''))
-        #writer.writerow(cnv_info + sample_output)
+        writer.writerow(cnv_info + sample_output)
         samples_confs.append(sample_output)
     logging.info("Merging overlapping variants: done")
     return samples_confs
@@ -227,17 +227,49 @@ def plot_results(heatmap, histogram, sample_ids, samples_confs):
                 non_zeros.append(val)
 
     variant_nums = [count for count,_ in enumerate(heatmap_rows[0])]
-    
-    if heatmap:
-        trace = go.Heatmap(z=heatmap_rows,
-                           x=sorted_sample_ids,
-                           y=variant_nums, colorscale='Greys')
-        data=[trace]
-        py.offline.plot(data, filename=heatmap)
 
-    if histogram:
-        data = [go.Histogram(x=non_zeros)]
-        py.offline.plot(data, filename=histogram)
+    maximum_conf = max(non_zeros)
+    tick = 0
+    tick_vals = []
+    tick_step = 50
+    while tick <= maximum_conf:
+        tick_vals.append(tick)
+        tick += tick_step
+
+    heatmap_data = [{
+        'x': sorted_sample_ids,
+        'y': variant_nums, 
+        'z': heatmap_rows,
+        'type': 'heatmap',
+        'colorscale': [
+            [0, 'rgb(250, 250, 250)'],        #0
+            [1./10000, 'rgb(200, 200, 200)'], #10
+            [1./1000, 'rgb(150, 150, 150)'],  #100
+            [1./100, 'rgb(100, 100, 100)'],   #1000
+            [1./10, 'rgb(50, 50, 50)'],       #10000
+            [1., 'rgb(0, 0, 0)'],             #100000
+
+        ],
+        'colorbar': {
+            'tick0': 0,
+            'tickmode': 'array',
+            'tickvals': tick_vals 
+        }
+    }]
+
+    heatmap_layout = {'title': 'sample vs confidence heatmap',
+        'xaxis': {'title': 'sample'}, 'yaxis': {'title': 'variant'}}
+    heatmap_fig = {'data': heatmap_data, 'layout': heatmap_layout}
+    py.offline.plot(heatmap_fig, filename=heatmap)
+
+    histogram_data = [{
+        'x' : non_zeros,
+        'type': 'histogram'
+    }]
+    histogram_layout = {'title': 'histogram of PennCNV confidence scores',
+        'xaxis': {'title': 'confidence scores'}, 'yaxis': {'title': 'count'}}
+    histogram_fig = {'data': histogram_data, 'layout': histogram_layout}
+    py.offline.plot(histogram_fig, filename=histogram)
 
 
 def init_logging(log_filename):
